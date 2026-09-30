@@ -1,4 +1,4 @@
-FROM golang:1.23.1 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 
 RUN apt update && apt install -y make git

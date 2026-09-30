@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 type DockerClient struct {
@@ -14,41 +13,36 @@ type DockerClient struct {
 }
 
 func NewDockerClient() (DockerClient, error) {
-	client, err := client.NewClientWithOpts()
+	// API version negotiation is enabled by default in the moby client.
+	client, err := client.New()
 	if err != nil {
 		return DockerClient{}, err
 	}
-
-	client.NegotiateAPIVersion(context.Background())
 
 	return DockerClient{client}, nil
 }
 
 func (c DockerClient) Start(ctx context.Context, imageRef string) (string, error) {
-	readCloser, err := c.ImagePull(ctx, imageRef, image.PullOptions{})
+	pullResp, err := c.ImagePull(ctx, imageRef, client.ImagePullOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to pull image: %w", err)
 	}
 
-	readCloser.Close()
+	pullResp.Close()
 
-	containerResp, err := c.ContainerCreate(
-		ctx,
-		&container.Config{
+	containerResp, err := c.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
 			Image: imageRef,
 		},
-		&container.HostConfig{
+		HostConfig: &container.HostConfig{
 			AutoRemove: true,
 		},
-		nil,
-		nil,
-		"",
-	)
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
 	}
 
-	if err = c.ContainerStart(ctx, containerResp.ID, container.StartOptions{}); err != nil {
+	if _, err = c.ContainerStart(ctx, containerResp.ID, client.ContainerStartOptions{}); err != nil {
 		return "", fmt.Errorf("failed to start container: %w", err)
 	}
 
@@ -57,7 +51,7 @@ func (c DockerClient) Start(ctx context.Context, imageRef string) (string, error
 
 func (c DockerClient) Stop(ctx context.Context, containerID string) error {
 	timeout := 15
-	err := c.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout})
+	_, err := c.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout})
 
 	if err != nil {
 		return fmt.Errorf("failed to remove container %s: %w", containerID, err)
